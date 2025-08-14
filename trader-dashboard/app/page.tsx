@@ -143,7 +143,7 @@ export default function Page() {
             <h2 style={{ fontSize: 16, marginBottom: 8 }}>How to connect TradingView alerts</h2>
             <ol className="small" style={{ display: "grid", gap: 6, paddingLeft: 18 }}>
               <li>Create an alert in TradingView (e.g., breakout, MACD cross).</li>
-              <li>Set <b>Webhook URL</b> to: <code>https://YOUR_DOMAIN.vercel.app/api/alert</code></li>
+              <li>Set <b>Webhook URL</b> to: <code>https://trader-dashboard-one.vercel.app/api/alert</code></li>
               <li>Set <b>Message</b> (JSON) like: <code>{"{"}"ticker":"NASDAQ:AAPL","action":"BUY","note":"TV alert"{"}"}</code></li>
               <li>If you set an <code>ALERT_SECRET</code> env var on Vercel, include header <code>x-alert-secret</code> in your webhook (TradingView supports a single message field only; alternatively, you can hardcode the secret in the message and parse it serverside if you prefer—ask me and I’ll show you how).</li>
             </ol>
@@ -180,3 +180,4 @@ export default function Page() {
     </div>
   );
 }
+
