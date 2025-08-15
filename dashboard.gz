@@ -1,0 +1,47 @@
+import { useState, useEffect } from "react"; import { AdvancedChart } from "react-tradingview-embed";
+
+export default function Dashboard() { const [selected, setSelected] = useState("NASDAQ:AAPL"); const [signals, setSignals] = useState([]);
+
+// Demo signal generator useEffect(() => { const tickers = ["NASDAQ:AAPL", "NASDAQ:TSLA", "NYSE:NVDA", "NASDAQ:MSFT", "NASDAQ:AMZN"]; const actions = ["BUY", "SELL"]; const interval = setInterval(() => { const ticker = tickers[Math.floor(Math.random() * tickers.length)]; const action = actions[Math.floor(Math.random() * actions.length)]; setSignals((prev) => [ { time: new Date().toLocaleTimeString(), ticker, action }, ...prev.slice(0, 19) ]); }, 5000); return () => clearInterval(interval); }, []);
+
+return ( <div className="min-h-screen bg-gray-900 text-white p-4 grid grid-cols-1 lg:grid-cols-4 gap-4"> {/* Ticker List */} <div className="bg-gray-800 rounded-2xl p-4 col-span-1"> <h2 className="text-xl font-bold mb-4">Watchlist</h2> {["NASDAQ:AAPL", "NASDAQ:TSLA", "NYSE:NVDA", "NASDAQ:MSFT", "NASDAQ:AMZN"].map((t) => ( <button key={t} onClick={() => setSelected(t)} className={block w-full text-left px-3 py-2 rounded-lg mb-2 ${ selected === t ? "bg-blue-600" : "bg-gray-700 hover:bg-gray-600" }} > {t} </button> ))} </div>
+
+{/* Chart Panel */}
+  <div className="bg-gray-800 rounded-2xl p-4 col-span-3">
+    <h2 className="text-xl font-bold mb-4">Live Chart: {selected}</h2>
+    <div className="h-[600px]">
+      <AdvancedChart
+        widgetProps={{
+          theme: "dark",
+          symbol: selected,
+          autosize: true,
+          interval: "15",
+          toolbar_bg: "#222",
+          withdateranges: true,
+          hide_side_toolbar: false,
+        }}
+      />
+    </div>
+  </div>
+
+  {/* Signals Feed */}
+  <div className="bg-gray-800 rounded-2xl p-4 col-span-4">
+    <h2 className="text-xl font-bold mb-4">Signal Feed</h2>
+    <div className="space-y-2 max-h-[300px] overflow-y-auto">
+      {signals.map((s, idx) => (
+        <div
+          key={idx}
+          className={`p-3 rounded-lg flex justify-between ${
+            s.action === "BUY" ? "bg-green-700" : "bg-red-700"
+          }`}
+        >
+          <span>{s.time}</span>
+          <span>{s.ticker}</span>
+          <span className="font-bold">{s.action}</span>
+        </div>
+      ))}
+    </div>
+  </div>
+</div>
+
+); }
