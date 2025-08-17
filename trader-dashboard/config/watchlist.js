@@ -1,1 +1,1 @@
-export const WATCHLIST = ["AAPL","TSLA","NVDA","MSFT","AMZN"];
+export const WATCHLIST = ["AAPL","TSLA","NVDA","MSFT","AMZN","META","GOOGL"];
