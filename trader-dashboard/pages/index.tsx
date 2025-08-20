@@ -1,1 +1,0 @@
-export default function Home() { return <div>Trader Dashboard v6.2</div>; }
