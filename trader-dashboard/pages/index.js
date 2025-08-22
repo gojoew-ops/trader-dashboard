@@ -151,9 +151,6 @@ export default function Home() {
               </div>
             </div>
           )}
-
-          <div className="footer-note">
-            Adjust thresholds & refresh rate from ⚙️ Settings. Overlay can be toggled.
           </div>
         </div>
 
