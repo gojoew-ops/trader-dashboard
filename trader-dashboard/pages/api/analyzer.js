@@ -1,44 +1,117 @@
+import fs from "fs";
+import path from "path";
+import fetch from "node-fetch";
 
-export const config = {
-  api: { bodyParser: false },
-};
+const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY || process.env.FINN;
 
-function noCache(res) {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
+// Utility: compute RSI
+function computeRSI(closes, period = 14) {
+  if (closes.length < period + 1) return null;
+  let gains = 0, losses = 0;
+  for (let i = closes.length - period; i < closes.length; i++) {
+    const diff = closes[i] - closes[i - 1];
+    if (diff >= 0) gains += diff;
+    else losses -= diff;
+  }
+  const avgGain = gains / period;
+  const avgLoss = losses / period || 1e-9;
+  const rs = avgGain / avgLoss;
+  return 100 - 100 / (1 + rs);
 }
 
-async function fetchQuoteFinnhub(sym, key) {
-  const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(sym)}&token=${key}`;
-  const r = await fetch(url, { headers: { 'cache-control': 'no-store' } });
-  if (!r.ok) throw new Error('finnhub ' + r.status);
-  const j = await r.json();
-  return j;
+// Utility: simple moving average
+function sma(values, period) {
+  if (values.length < period) return null;
+  const sum = values.slice(-period).reduce((a, b) => a + b, 0);
+  return sum / period;
+}
+
+// Compute slope of MA
+function maSlope(closes, period = 20) {
+  if (closes.length < period + 1) return null;
+  const maNow = sma(closes, period);
+  const maPrev = sma(closes.slice(0, -1), period);
+  return maNow - maPrev;
+}
+
+// Standard deviation
+function stddev(arr) {
+  const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
+  const sq = arr.map(x => (x - mean) ** 2);
+  return Math.sqrt(sq.reduce((a, b) => a + b, 0) / arr.length);
+}
+
+// Load candidate list
+function loadCandidates() {
+  const filePath = path.join(process.cwd(), "data", "candidates.json");
+  try {
+    const raw = fs.readFileSync(filePath, "utf-8");
+    return JSON.parse(raw);
+  } catch (e) {
+    console.error("Could not load candidates.json:", e);
+    return ["AAPL", "MSFT", "GOOGL"];
+  }
 }
 
 export default async function handler(req, res) {
-  noCache(res);
-  const FINN = process.env.FINNHUB_API_KEY || process.env.NEXT_PUBLIC_FINNHUB_API_KEY;
-  if (!FINN) {
-    return res.status(500).json({ error: 'Missing FINNHUB_API_KEY' });
-  }
-  // Candidate symbols to scan (cheap, liquid-ish). We will filter under $10 dynamically.
-  const candidates = ['SIRI','NOK','FUBO','PLUG','SOFI','GPRO','BBBYQ','RIVN','GRAB','IQ','AAL','CCL','NIO','AMC','DNA'];
+  const candidates = loadCandidates();
+  const now = Math.floor(Date.now() / 1000);
+  const from = now - 60 * 60 * 24 * 5; // last 5 days
+  const resolution = "5"; // 5-minute candles
+
   const items = [];
-  for (const sym of candidates) {
+
+  for (const symbol of candidates) {
     try {
-      const q = await fetchQuoteFinnhub(sym, FINN);
-      const c = q.c; // current
-      if (!c || c >= 10) continue;
-      const dp = q.dp ?? ((q.c - q.pc) / (q.pc || q.c)) * 100;
-      const nearHigh = q.h ? Math.max(0, Math.min(1, (c - (q.h*0.98)) / Math.max(1, q.h*0.02))) : 0; // 0..1
-      const rising = c > (q.o || q.pc) ? 1 : -0.3;
-      const score = (dp/2) + (nearHigh*1.2) + rising; // tuned light
-      items.push({ symbol: sym, c, dp, h: q.h, l: q.l, o: q.o, pc: q.pc, score });
-    } catch (_) {}
+      // Fetch intraday candles
+      const url = `https://finnhub.io/api/v1/stock/candle?symbol=${symbol}&resolution=${resolution}&from=${from}&to=${now}&token=${FINNHUB_API_KEY}`;
+      const resp = await fetch(url);
+      const data = await resp.json();
+
+      if (data && data.s === "ok") {
+        const closes = data.c;
+        const rsi = computeRSI(closes);
+        const slope = maSlope(closes);
+        const vol = stddev(closes.slice(-50).map((c, i, arr) => (i === 0 ? 0 : (c - arr[i - 1]) / arr[i - 1])));
+
+        const current = closes[closes.length - 1];
+        const high = Math.max(...closes);
+        const nearHigh = current > 0.98 * high;
+
+        // Composite score
+        let score = 0;
+        if (rsi !== null) score += (rsi - 50) / 50; // momentum
+        if (slope !== null) score += slope / current;
+        if (nearHigh) score += 0.5;
+
+        items.push({
+          symbol,
+          current,
+          rsi,
+          slope,
+          vol,
+          nearHigh,
+          score: score.toFixed(3),
+        });
+      } else {
+        // fallback: quote only
+        const quoteUrl = `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${FINNHUB_API_KEY}`;
+        const q = await fetch(quoteUrl).then(r => r.json());
+        items.push({
+          symbol,
+          current: q.c,
+          rsi: null,
+          slope: null,
+          vol: null,
+          nearHigh: null,
+          score: 0,
+        });
+      }
+    } catch (err) {
+      console.error("Error fetching data for", symbol, err);
+    }
   }
-  items.sort((a,b)=> (b.score||-1) - (a.score||-1));
-  const best = items[0] || null;
-  res.status(200).json({ items, best, updatedAt: Date.now() });
+
+  items.sort((a, b) => b.score - a.score);
+  res.status(200).json({ items, best: items[0] || null, meta: { count: items.length } });
 }
