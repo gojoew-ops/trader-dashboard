@@ -84,7 +84,7 @@ export default async function handler(req, res) {
 
         // Composite score
         let score = 0;
-        if (rsi !== null) score += (rsi - 50) / 50; // momentum
+        if (rsi !== null) score += (rsi - 50) / 50;
         if (slope !== null) score += slope / current;
         if (nearHigh) score += 0.5;
 
@@ -95,7 +95,7 @@ export default async function handler(req, res) {
           slope,
           vol,
           nearHigh,
-          score: score.toFixed(3),
+          score: parseFloat(score.toFixed(3)),
         });
       } else {
         // fallback: quote only
@@ -116,6 +116,17 @@ export default async function handler(req, res) {
     }
   }
 
+  // Rank all
   items.sort((a, b) => b.score - a.score);
-  res.status(200).json({ items, best: items[0] || null, meta: { count: items.length } });
+
+  // Filter top under $10 stocks
+  const under10 = items.filter(x => x.current && x.current < 10);
+  under10.sort((a, b) => b.score - a.score);
+
+  res.status(200).json({
+    items,
+    best: items[0] || null,
+    under10: under10.slice(0, 10), // top 10 under $10
+    meta: { total: items.length, under10Count: under10.length },
+  });
 }
