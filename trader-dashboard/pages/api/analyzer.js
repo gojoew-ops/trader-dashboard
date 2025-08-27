@@ -1,6 +1,5 @@
 import fs from "fs";
 import path from "path";
-import fetch from "node-fetch";
 
 const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY || process.env.FINN;
 
@@ -36,6 +35,7 @@ function maSlope(closes, period = 20) {
 
 // Standard deviation
 function stddev(arr) {
+  if (!arr.length) return null;
   const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
   const sq = arr.map(x => (x - mean) ** 2);
   return Math.sqrt(sq.reduce((a, b) => a + b, 0) / arr.length);
@@ -72,7 +72,11 @@ export default async function handler(req, res) {
         const closes = data.c;
         const rsi = computeRSI(closes);
         const slope = maSlope(closes);
-        const vol = stddev(closes.slice(-50).map((c, i, arr) => (i === 0 ? 0 : (c - arr[i - 1]) / arr[i - 1])));
+        const vol = stddev(
+          closes.slice(-50).map((c, i, arr) =>
+            i === 0 ? 0 : (c - arr[i - 1]) / arr[i - 1]
+          )
+        );
 
         const current = closes[closes.length - 1];
         const high = Math.max(...closes);
