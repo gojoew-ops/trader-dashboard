@@ -4,8 +4,15 @@ import axios from 'axios';
 const FINNHUB_KEY = process.env.NEXT_PUBLIC_FINNHUB_API_KEY;
 const YAHOO_KEY = process.env.NEXT_PUBLIC_YAHOO_API_KEY;
 
-// Example stock universe (expandable later)
-const WATCHLIST = ['AAPL', 'MSFT', 'TSLA', 'META', 'GOOGL', 'F', 'PFE', 'NOK'];
+// Expanded stock universe: mix of blue chips + cheap tickers
+const WATCHLIST = [
+  // Blue chips
+  'AAPL', 'MSFT', 'TSLA', 'META', 'GOOGL', 'F', 'PFE', 'NOK',
+  // Under $10 / retail favorites
+  'SIRI', 'AMC', 'BB', 'SNAP', 'FCEL', 'IQ', 'GPRO', 'XELA', 'OCGN', 'ZNGA',
+  // Penny/small caps often under $5
+  'GEVO', 'IDEX', 'CENN', 'KODK', 'NNDM', 'EXPR', 'RIOT', 'MARA', 'PLUG'
+];
 
 async function fetchFromFinnhub() {
   if (!FINNHUB_KEY) return [];
@@ -15,6 +22,7 @@ async function fetchFromFinnhub() {
       WATCHLIST.map(async symbol => {
         const url = `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${FINNHUB_KEY}`;
         const { data } = await axios.get(url);
+
         return {
           symbol,
           price: data.c,
@@ -26,7 +34,10 @@ async function fetchFromFinnhub() {
         };
       })
     );
-    return results.filter(r => r.price !== undefined);
+
+    const filtered = results.filter(r => r.price !== undefined && r.price !== 0);
+    console.log(`Fetched ${filtered.length} symbols from Finnhub`);
+    return filtered;
   } catch (err) {
     console.error('Finnhub fetch failed:', err.message);
     return [];
@@ -55,7 +66,10 @@ async function fetchFromYahoo() {
         };
       })
     );
-    return results.filter(r => r.price !== null);
+
+    const filtered = results.filter(r => r.price !== null);
+    console.log(`Fetched ${filtered.length} symbols from Yahoo`);
+    return filtered;
   } catch (err) {
     console.error('Yahoo fetch failed:', err.message);
     return [];
@@ -67,17 +81,16 @@ export async function getSymbolsData() {
   let data = await fetchFromFinnhub();
 
   if (data.length > 0) {
-    console.log(`Fetched ${data.length} symbols from Finnhub`);
     return data;
   }
 
   // Fallback: Yahoo
   data = await fetchFromYahoo();
   if (data.length > 0) {
-    console.log(`Fetched ${data.length} symbols from Yahoo`);
     return data;
   }
 
-  console.warn('No data returned from either Finnhub or Yahoo');
+  console.warn('No stock data returned from either source');
   return [];
 }
+
