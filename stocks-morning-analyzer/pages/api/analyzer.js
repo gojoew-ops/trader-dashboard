@@ -19,11 +19,11 @@ export default async function handler(req, res) {
     // Filter for stocks under $10
     const underTen = symbolsData.filter(s => s.price && s.price < 10);
     console.log(`Filtered under $10: ${underTen.length} symbols`);
-    console.log("Under $10 symbols:", JSON.stringify(underTen, null, 2));
 
     if (underTen.length === 0) {
+      // Instead of returning nothing, tell us what was fetched
       return res.status(200).json({
-        message: 'No qualifying symbols under $10',
+        message: `Analyzed ${symbolsData.length} stocks but none were under $10. Try expanding universe.`,
         candidates: [],
       });
     }
@@ -41,11 +41,13 @@ export default async function handler(req, res) {
     // Sort high to low
     scored.sort((a, b) => b.score - a.score);
 
-    console.log("Top candidates:", JSON.stringify(scored.slice(0, 5), null, 2));
+    // Always return what we have (even if <5)
+    const topPicks = scored.slice(0, Math.min(5, scored.length));
+    console.log("Top candidates:", JSON.stringify(topPicks, null, 2));
 
     return res.status(200).json({
       message: `Analyzed ${symbolsData.length} stocks, ${underTen.length} under $10`,
-      candidates: scored.slice(0, 5), // top 5
+      candidates: topPicks,
     });
   } catch (err) {
     console.error('Analyzer error:', err);
