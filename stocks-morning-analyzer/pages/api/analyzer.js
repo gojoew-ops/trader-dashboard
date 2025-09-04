@@ -1,4 +1,5 @@
 // pages/api/analyzer.js
+console.log(process.env.YAHOO_API_KEY, process.env.NEXT_PUBLIC_YAHOO_API_KEY)
 import { getSymbolsData } from '@/utils/sources';
 import { scoreStock } from '@/utils/scoring';
 
