@@ -1,20 +1,12 @@
-{
-  "symbols": [
-    "SIRI",
-    "NOK",
-    "FUBO",
-    "PLUG",
-    "SOFI",
-    "GPRO",
-    "GRAB",
-    "IQ",
-    "AAL",
-    "CCL",
-    "NIO",
-    "AMC",
-    "DNA",
-    "RIOT",
-    "MARA",
-    "WISH"
-  ]
-}
+[
+  "F",     // Ford
+  "NOK",   // Nokia
+  "PSTG",  // Pure Storage
+  "SIRI",  // Sirius XM
+  "AAL",   // American Airlines
+  "KGC",   // Kinross Gold
+  "BBD",   // Banco Bradesco
+  "SWN",   // Southwestern Energy
+  "MFA",   // MFA Financial
+  "CX"     // Cemex
+]
