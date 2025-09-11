@@ -1,5 +1,4 @@
 // stocks-morning-analyzer/lib/sources/sentiment.js
-import fetch from "node-fetch";
 
 // Very simple sentiment scoring
 function analyzeText(text) {
