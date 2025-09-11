@@ -4,96 +4,87 @@ import path from 'path';
 import axios from 'axios';
 
 /**
- * Load a universe of symbols to analyze.
- * Tries, in order:
- *   1) /data/candidates.json -> { "symbols": [...] } or [ ... ]
- *   2) /candidates.json      -> [ ... ]
- *   3) Fallback small built‑in list
+ * Load universe from data/candidates.json or root candidates.json
+ * Accepts either:
+ *  - an array: ["AAPL","F","NOK"]
+ *  - an object: { "symbols": ["AAPL","F"] }
+ *
+ * Returns deduped array of symbol strings.
  */
-function loadUniverse() {
-  try {
-    const dataPath = path.join(process.cwd(), 'data', 'candidates.json');
-    if (fs.existsSync(dataPath)) {
-      const raw = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
-      if (Array.isArray(raw)) return raw;
-      if (raw && Array.isArray(raw.symbols)) return raw.symbols;
-    }
-  } catch (_) {}
+function loadUniverseSymbols() {
+  const filesToTry = [
+    path.join(process.cwd(), 'data', 'candidates.json'),
+    path.join(process.cwd(), 'candidates.json'),
+  ];
 
-  try {
-    const altPath = path.join(process.cwd(), 'candidates.json');
-    if (fs.existsSync(altPath)) {
-      const raw = JSON.parse(fs.readFileSync(altPath, 'utf8'));
-      if (Array.isArray(raw)) return raw;
-      if (raw && Array.isArray(raw.symbols)) return raw.symbols;
+  for (const p of filesToTry) {
+    try {
+      if (fs.existsSync(p)) {
+        const raw = fs.readFileSync(p, 'utf8');
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed.map(s => String(s).trim().toUpperCase()).filter(Boolean);
+        if (parsed && Array.isArray(parsed.symbols)) return parsed.symbols.map(s => String(s).trim().toUpperCase()).filter(Boolean);
+      }
+    } catch (e) {
+      // ignore and try next
+      console.warn('Could not parse', p, e?.message);
     }
-  } catch (_) {}
+  }
 
-  // Minimal fallback so the UI always shows something
-  return ['SIRI','NOK','F','GPRO','PLUG','SOFI','AAL','CCL','IQ','DNA','RIOT','MARA'];
+  // Fallback sample universe (low-priced examples for demo)
+  return ['F','NOK','SNDL','GME','AMC','PLTR','PFE','T','ZNGA'].map(s=>s.toUpperCase());
+}
+
+function chunkArray(arr, n){
+  const out=[];
+  for(let i=0;i<arr.length;i+=n) out.push(arr.slice(i,i+n));
+  return out;
 }
 
 /**
- * Fetch quote data for a batch of symbols using Yahoo Finance's
- * public quote endpoint (no API key required). This runs server‑side
- * inside the Next.js API route, so CORS is not an issue.
+ * Fetch quotes from Yahoo Finance public endpoint for given symbols
+ * Returns array of objects: { symbol, price, high, low, open, prevClose, regularMarketVolume }
  */
-async function fetchYahooBatch(symbols) {
-  if (!symbols.length) return [];
-  const url = `https://query1.finance.yahoo.com/v7/finance/quote?lang=en-US&region=US&symbols=${encodeURIComponent(symbols.join(','))}`;
-  const { data } = await axios.get(url, { timeout: 10_000 });
-  const results = data?.quoteResponse?.result || [];
-  return results.map(r => ({
-    symbol: r.symbol,
-    price: r.regularMarketPrice ?? null,
-    high: r.regularMarketDayHigh ?? null,
-    low: r.regularMarketDayLow ?? null,
-    open: r.regularMarketOpen ?? null,
-    prevClose: r.regularMarketPreviousClose ?? null,
-    // lightweight intraday volatility proxy
-    volatility: (r.regularMarketPrice && r.regularMarketDayHigh != null && r.regularMarketDayLow != null)
-      ? (r.regularMarketDayHigh - r.regularMarketDayLow) / r.regularMarketPrice
-      : null,
-    source: 'yahoo'
+async function fetchQuotesForSymbols(symbols){
+  if(!symbols || symbols.length===0) return [];
+  const qs = symbols.join(',');
+  const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(qs)}`;
+  const r = await axios.get(url, { timeout: 10000 });
+  const results = r?.data?.quoteResponse?.result || [];
+  return results.map(q => ({
+    symbol: q.symbol,
+    price: q.regularMarketPrice ?? q.regularMarketPreviousClose ?? null,
+    high: q.regularMarketDayHigh ?? null,
+    low: q.regularMarketDayLow ?? null,
+    open: q.regularMarketOpen ?? null,
+    prevClose: q.regularMarketPreviousClose ?? null,
+    volume: q.regularMarketVolume ?? null,
   }));
 }
 
 /**
- * Public function used by the API route.
- * Returns [{symbol, price, high, low, open, prevClose, volatility, source}]
+ * Public function: getSymbolsData
+ * Loads universe, fetches quotes in chunks, dedupes and returns array of {symbol, price, high, low, open, prevClose, volume}
  */
-export async function getSymbolsData() {
-  const universe = loadUniverse();
-
-  // Yahoo allows a lot per request, but we chunk to be safe
-  const chunkSize = 40;
-  const chunks = [];
-  for (let i = 0; i < universe.length; i += chunkSize) {
-    chunks.push(universe.slice(i, i + chunkSize));
-  }
-
-  const all = [];
-  for (const chunk of chunks) {
-    try {
-      const rows = await fetchYahooBatch(chunk);
-      all.push(...rows);
-    } catch (err) {
-      console.warn('Yahoo batch failed for', chunk.join(','), err?.message || err);
+export async function getSymbolsData(){
+  const universe = loadUniverseSymbols();
+  const unique = Array.from(new Set(universe));
+  const chunks = chunkArray(unique, 50); // Yahoo accepts many symbols; keep chunk small for safety
+  const out = [];
+  for(const c of chunks){
+    try{
+      const quotes = await fetchQuotesForSymbols(c);
+      for(const q of quotes){
+        if(q && q.symbol) out.push(q);
+      }
+    }catch(e){
+      console.error('Failed to fetch quotes chunk', e?.message || e);
     }
   }
-
-  // De‑dupe just in case
-  const seen = new Set();
-  const deduped = [];
-  for (const row of all) {
-    if (row?.symbol && !seen.has(row.symbol)) {
-      seen.add(row.symbol);
-      deduped.push(row);
-    }
-  }
-  return deduped;
+  // ensure returned array matches requested symbols order (where possible)
+  const bySymbol = new Map(out.map(o=>[o.symbol, o]));
+  const ordered = unique.map(s=> bySymbol.get(s) || { symbol: s, price: null, high:null, low:null, open:null, prevClose:null, volume:null });
+  return ordered;
 }
 
 export default { getSymbolsData };
-
-
