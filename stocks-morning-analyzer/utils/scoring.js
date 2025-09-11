@@ -4,29 +4,44 @@
 export function scoreStock(stock) {
   let score = 0;
 
-  // Favor stocks with some volatility
-  if (stock.high && stock.low) {
-    const range = stock.high - stock.low;
-    if (range > 0 && stock.price) {
-      score += (range / stock.price) * 10;
-    }
+  // Safety checks
+  if (!stock || typeof stock !== 'object') return 0;
+
+  const price = Number(stock.price) || 0;
+  const high = Number(stock.high) || 0;
+  const low = Number(stock.low) || 0;
+  const open = Number(stock.open) || 0;
+  const prevClose = Number(stock.prevClose) || 0;
+
+  // Favor stocks with some intraday range (volatility)
+  if (high > low && price > 0) {
+    const range = high - low;
+    score += (range / Math.max(price, 0.0001)) * 10; // normalized
   }
 
-  // Favor if price is above open (momentum signal)
-  if (stock.open && stock.price > stock.open) {
-    score += 5;
-  }
-
-  // Favor if price is above previous close
-  if (stock.prevClose && stock.price > stock.prevClose) {
+  // Momentum: price above open
+  if (open > 0 && price > open) {
     score += 3;
   }
 
-  // Bonus for very low-priced stocks (speculative upside)
-  if (stock.price && stock.price < 5) {
+  // Momentum: price above previous close
+  if (prevClose > 0 && price > prevClose) {
     score += 2;
   }
 
-  return Math.round(score * 100) / 100; // keep 2 decimals
-}
+  // Favor low-priced (speculative) candidates for day trading — but keep small bonus
+  if (price > 0 && price < 5) {
+    score += 1.5;
+  } else if (price > 0 && price < 10) {
+    score += 0.7;
+  }
 
+  // Volume bonus (if provided)
+  if (stock.volume && Number(stock.volume) > 0) {
+    const vol = Number(stock.volume);
+    // modest score for higher volume (log scale)
+    score += Math.min(5, Math.log10(vol + 1) );
+  }
+
+  return Math.round(score * 100) / 100;
+}
